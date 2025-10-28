@@ -26,6 +26,17 @@ export interface BeeperChat {
   isArchived?: boolean;
   isMuted?: boolean;
   isPinned?: boolean;
+  participants?: {
+    items: Array<{
+      id: string;
+      phoneNumber?: string;
+      fullName?: string;
+      isSelf?: boolean;
+      [key: string]: any;
+    }>;
+    hasMore: boolean;
+    total: number;
+  };
 }
 
 export interface BeeperMessage {
@@ -54,6 +65,31 @@ export interface SearchMessagesOptions {
   query?: string;
 }
 
+export interface BeeperUser {
+  id: string;
+  username?: string;
+  phoneNumber?: string;
+  email?: string;
+  fullName?: string;
+  imgURL?: string;
+  cannotMessage?: boolean;
+  isSelf?: boolean;
+}
+
+export interface CreateChatOptions {
+  accountID: string;
+  type: 'single' | 'group';
+  participantIDs: string[];
+  title?: string;
+  messageText?: string;
+}
+
+export interface SendMessageOptions {
+  chatID: string;
+  text?: string;
+  replyToMessageID?: string;
+}
+
 export class BeeperClient {
   private accessToken: string;
   private baseURL: string;
@@ -63,16 +99,19 @@ export class BeeperClient {
     this.baseURL = baseURL;
   }
 
-  private async request<T>(endpoint: string): Promise<T> {
+  private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const response = await fetch(`${this.baseURL}${endpoint}`, {
+      ...options,
       headers: {
         'Authorization': `Bearer ${this.accessToken}`,
         'Content-Type': 'application/json',
+        ...options?.headers,
       },
     });
 
     if (!response.ok) {
-      throw new Error(`API request failed: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`API request failed: ${response.statusText}. ${errorText}`);
     }
 
     return response.json();
@@ -105,5 +144,24 @@ export class BeeperClient {
   async getChat(chatID: string): Promise<BeeperChat> {
     const params = new URLSearchParams({ chatID });
     return this.request<BeeperChat>(`/get-chat?${params.toString()}`);
+  }
+
+  async searchUsers(accountID: string, query: string): Promise<{ items: BeeperUser[] }> {
+    const params = new URLSearchParams({ accountID, query });
+    return this.request<{ items: BeeperUser[] }>(`/search-users?${params.toString()}`);
+  }
+
+  async createChat(options: CreateChatOptions): Promise<{ chatID: string }> {
+    return this.request<{ chatID: string }>('/create-chat', {
+      method: 'POST',
+      body: JSON.stringify(options),
+    });
+  }
+
+  async sendMessage(options: SendMessageOptions): Promise<{ messageID: string }> {
+    return this.request<{ messageID: string }>('/send-message', {
+      method: 'POST',
+      body: JSON.stringify(options),
+    });
   }
 }

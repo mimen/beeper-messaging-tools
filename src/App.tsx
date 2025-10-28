@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { BeeperClient } from './beeper-api';
+import { BatchMessaging } from './BatchMessaging';
 
 interface Account {
   accountID: string;
@@ -45,6 +46,8 @@ function App() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [chats, setChats] = useState<Chat[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [client, setClient] = useState<BeeperClient | null>(null);
+  const [gmessagesAccountID, setGmessagesAccountID] = useState<string>('');
 
   const handleConnect = async () => {
     if (!accessToken.trim()) {
@@ -59,17 +62,25 @@ function App() {
       console.log('Attempting to connect to Beeper API...');
 
       // Initialize Beeper SDK client
-      const client = new BeeperClient(accessToken.trim());
+      const beeperClient = new BeeperClient(accessToken.trim());
+      setClient(beeperClient);
 
       // Fetch accounts
       console.log('Fetching accounts...');
-      const accountList = await client.getAccounts();
+      const accountList = await beeperClient.getAccounts();
       console.log('Accounts received:', accountList);
       setAccounts(accountList);
 
+      // Find Google Messages account
+      const gmessagesAccount = accountList.find(acc => acc.network === 'Google Messages');
+      if (gmessagesAccount) {
+        setGmessagesAccountID(gmessagesAccount.accountID);
+        console.log('Google Messages account ID:', gmessagesAccount.accountID);
+      }
+
       // Fetch a few recent chats
       console.log('Fetching chats...');
-      const chatData = await client.searchChats({ limit: 5 });
+      const chatData = await beeperClient.searchChats({ limit: 5 });
       console.log('Chats received:', chatData);
       setChats(chatData.items);
 
@@ -77,7 +88,7 @@ function App() {
       if (chatData.items.length > 0) {
         const firstChat = chatData.items[0];
         console.log('Fetching messages for chat:', firstChat.id);
-        const messageData = await client.searchMessages({ chatID: firstChat.id, limit: 10 });
+        const messageData = await beeperClient.searchMessages({ chatID: firstChat.id, limit: 10 });
         console.log('Messages received:', messageData);
         setMessages(messageData.items);
       }
@@ -259,6 +270,11 @@ function App() {
                 ✓ Successfully connected to Beeper API
               </p>
             </div>
+
+            {/* Batch Messaging Section */}
+            {client && gmessagesAccountID && (
+              <BatchMessaging client={client} gmessagesAccountID={gmessagesAccountID} />
+            )}
           </div>
         )}
       </div>
