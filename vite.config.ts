@@ -9,6 +9,15 @@ export default defineConfig({
         target: 'http://localhost:23373',
         changeOrigin: true,
       },
+      '/v1': {
+        target: 'http://localhost:23373',
+        changeOrigin: true,
+      },
+      '/airtable': {
+        target: 'https://api.airtable.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/airtable/, ''),
+      },
     },
   },
 })

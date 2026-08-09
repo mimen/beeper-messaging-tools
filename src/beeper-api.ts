@@ -48,6 +48,7 @@ export interface BeeperMessage {
     fullName?: string;
     username?: string;
     phoneNumber?: string;
+    isSelf?: boolean;
   };
   timestamp?: string;
   sortKey?: number;
@@ -57,12 +58,45 @@ export interface SearchChatsOptions {
   limit?: number;
   query?: string;
   accountIDs?: string[];
+  cursor?: string;
+}
+
+export interface SearchChatsResult {
+  items: BeeperChat[];
+  hasMore: boolean;
+  oldestCursor?: string;
+  newestCursor?: string;
 }
 
 export interface SearchMessagesOptions {
   chatID?: string;
   limit?: number;
   query?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  chatID: string;
+  accountID: string;
+  senderID: string;
+  senderName?: string;
+  timestamp: string;
+  sortKey: string;
+  type?: string;
+  text?: string;
+  isSender: boolean;
+  isUnread?: boolean;
+  linkedMessageID?: string;
+}
+
+export interface ListMessagesOptions {
+  cursor?: string;
+  direction?: 'before' | 'after';
+}
+
+export interface ListMessagesResult {
+  items: ChatMessage[];
+  hasMore: boolean;
 }
 
 export interface BeeperUser {
@@ -121,14 +155,30 @@ export class BeeperClient {
     return this.request<BeeperAccount[]>('/get-accounts');
   }
 
-  async searchChats(options: SearchChatsOptions = {}): Promise<{ items: BeeperChat[] }> {
+  async searchChats(options: SearchChatsOptions = {}): Promise<SearchChatsResult> {
     const params = new URLSearchParams();
     if (options.limit) params.set('limit', options.limit.toString());
     if (options.query) params.set('query', options.query);
     if (options.accountIDs) params.set('accountIDs', options.accountIDs.join(','));
+    if (options.cursor) params.set('cursor', options.cursor);
 
     const query = params.toString();
-    return this.request<{ items: BeeperChat[] }>(`/search-chats${query ? '?' + query : ''}`);
+    return this.request<SearchChatsResult>(`/search-chats${query ? '?' + query : ''}`);
+  }
+
+  async searchAllChats(options: Omit<SearchChatsOptions, 'cursor'>): Promise<BeeperChat[]> {
+    const allChats: BeeperChat[] = [];
+    let cursor: string | undefined;
+
+    while (true) {
+      const result = await this.searchChats({ ...options, limit: 200, cursor });
+      allChats.push(...result.items);
+
+      if (!result.hasMore || !result.oldestCursor) break;
+      cursor = result.oldestCursor;
+    }
+
+    return allChats;
   }
 
   async searchMessages(options: SearchMessagesOptions = {}): Promise<{ items: BeeperMessage[] }> {
@@ -163,5 +213,27 @@ export class BeeperClient {
       method: 'POST',
       body: JSON.stringify(options),
     });
+  }
+
+  async listMessages(chatID: string, options: ListMessagesOptions = {}): Promise<ListMessagesResult> {
+    const params = new URLSearchParams();
+    if (options.cursor) params.set('cursor', options.cursor);
+    if (options.direction) params.set('direction', options.direction);
+
+    const query = params.toString();
+    const encodedChatID = encodeURIComponent(chatID);
+    const response = await fetch(`/v1/chats/${encodedChatID}/messages${query ? '?' + query : ''}`, {
+      headers: {
+        'Authorization': `Bearer ${this.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API request failed: ${response.statusText}. ${errorText}`);
+    }
+
+    return response.json();
   }
 }
