@@ -3,7 +3,7 @@ import { BeeperClient } from './beeper-api';
 
 interface Account {
   accountID: string;
-  network: string;
+  network: string | null;
   user: {
     id: string;
     fullName?: string;
@@ -29,6 +29,7 @@ interface Message {
   id: string;
   chatID: string;
   text?: string;
+  senderName?: string;
   sender?: {
     fullName?: string;
     username?: string;
@@ -37,7 +38,6 @@ interface Message {
 }
 
 function App() {
-  const [accessToken, setAccessToken] = useState(import.meta.env.VITE_BEEPER_ACCESS_TOKEN || '');
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,19 +47,14 @@ function App() {
   const [messages, setMessages] = useState<Message[]>([]);
 
   const handleConnect = async () => {
-    if (!accessToken.trim()) {
-      setError('Please enter an access token');
-      return;
-    }
-
     setIsLoading(true);
     setError(null);
 
     try {
       console.log('Attempting to connect to Beeper API...');
 
-      // Initialize Beeper SDK client
-      const client = new BeeperClient(accessToken.trim());
+      // The Vite server proxies requests and adds bearer authentication.
+      const client = new BeeperClient();
 
       // Fetch accounts
       console.log('Fetching accounts...');
@@ -94,9 +89,9 @@ function App() {
 
         // Add helpful context for common errors
         if (err.message.includes('fetch') || err.message.includes('network')) {
-          errorMessage += '\n\nMake sure Beeper Desktop is running and the API is enabled (Settings → Developers)';
-        } else if (err.message.includes('401') || err.message.includes('unauthorized')) {
-          errorMessage += '\n\nYour access token may be invalid. Try generating a new one.';
+          errorMessage += '\n\nMake sure the configured Beeper host is reachable and its Desktop API is enabled.';
+        } else if (err.message.includes('401') || err.message.toLowerCase().includes('unauthorized')) {
+          errorMessage += '\n\nBEEPER_ACCESS_TOKEN may be missing or invalid on the Vite server.';
         }
       }
 
@@ -112,25 +107,19 @@ function App() {
       <div className="container mx-auto px-4 py-8">
         <header className="mb-8">
           <h1 className="text-4xl font-bold text-white mb-2">Beeper Messaging Tools</h1>
-          <p className="text-slate-300">Connect to your local Beeper Desktop API</p>
+          <p className="text-slate-300">Connect through the server-side Beeper API proxy</p>
         </header>
 
         {!isConnected ? (
           <div className="max-w-md mx-auto">
             <div className="bg-white/10 backdrop-blur-lg rounded-lg p-6 shadow-xl">
-              <div className="mb-4">
-                <label htmlFor="token" className="block text-sm font-medium text-slate-200 mb-2">
-                  Access Token
-                </label>
-                <input
-                  id="token"
-                  type="password"
-                  value={accessToken}
-                  onChange={(e) => setAccessToken(e.target.value)}
-                  placeholder="Enter your Beeper access token"
-                  className="w-full px-4 py-2 bg-white/20 border border-white/30 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  onKeyDown={(e) => e.key === 'Enter' && handleConnect()}
-                />
+              <div className="mb-4 text-sm text-slate-300">
+                <p>
+                  The server supplies bearer authentication and defaults to the central Beeper API on the Mini.
+                </p>
+                <p className="mt-2 text-xs text-slate-400">
+                  Set BEEPER_URL to use another API host, including a local Beeper Desktop instance.
+                </p>
               </div>
 
               {error && (
@@ -147,21 +136,9 @@ function App() {
                 {isLoading ? 'Connecting...' : 'Connect'}
               </button>
 
-              <div className="mt-4 text-xs text-slate-400">
-                <p>To get your access token:</p>
-                <ol className="list-decimal list-inside mt-2 space-y-1">
-                  <li>Open Beeper Desktop</li>
-                  <li>Go to Settings → Developers</li>
-                  <li>Enable "Beeper Desktop API"</li>
-                  <li>Click "+" under "Approved connections"</li>
-                  <li>Copy your token</li>
-                </ol>
-                <div className="mt-3 p-2 bg-yellow-500/20 border border-yellow-500/50 rounded">
-                  <p className="text-yellow-200 text-xs">
-                    ⚠️ For local use only. Never share your token or use this in production.
-                  </p>
-                </div>
-              </div>
+              <p className="mt-4 text-xs text-slate-400">
+                BEEPER_ACCESS_TOKEN stays in the Vite server environment and is never added to the browser bundle.
+              </p>
             </div>
           </div>
         ) : (
@@ -174,17 +151,17 @@ function App() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {accounts.map((account) => (
-                    <div key={account.accountID} className="bg-white/10 rounded-lg p-4">
+                    <div key={`${account.accountID}:${account.user.id}`} className="bg-white/10 rounded-lg p-4">
                       <div className="flex items-center space-x-3">
                         {account.user.avatarURL && (
                           <img
                             src={account.user.avatarURL}
-                            alt={account.user.fullName || account.network}
+                            alt={account.user.fullName || account.network || account.accountID}
                             className="w-12 h-12 rounded-full"
                           />
                         )}
                         <div>
-                          <p className="text-white font-medium">{account.network}</p>
+                          <p className="text-white font-medium">{account.network || account.accountID}</p>
                           <p className="text-slate-300 text-sm">
                             {account.user.fullName || account.user.username || account.user.phoneNumber}
                           </p>
@@ -237,7 +214,7 @@ function App() {
                       <div className="flex items-start space-x-3">
                         <div className="flex-1">
                           <p className="text-purple-300 text-sm font-medium">
-                            {message.sender?.fullName || message.sender?.username || 'Unknown'}
+                            {message.senderName || message.sender?.fullName || message.sender?.username || 'Unknown'}
                           </p>
                           <p className="text-white mt-1">{message.text || '(No text content)'}</p>
                           {message.timestamp && (
