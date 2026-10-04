@@ -56,26 +56,19 @@ function App() {
       // The Vite server proxies requests and adds bearer authentication.
       const client = new BeeperClient();
 
-      // Fetch accounts
-      console.log('Fetching accounts...');
-      const accountList = await client.getAccounts();
-      console.log('Accounts received:', accountList);
+      const [accountList, [chatData, messageData]] = await Promise.all([
+        client.getAccounts(),
+        client.searchChats({ limit: 5 }).then(async (chatData) => {
+          const firstChat = chatData.items[0];
+          const messageData = firstChat
+            ? await client.searchMessages({ chatID: firstChat.id, limit: 10 })
+            : { items: [] };
+          return [chatData, messageData] as const;
+        }),
+      ]);
       setAccounts(accountList);
-
-      // Fetch a few recent chats
-      console.log('Fetching chats...');
-      const chatData = await client.searchChats({ limit: 5 });
-      console.log('Chats received:', chatData);
       setChats(chatData.items);
-
-      // Fetch a few messages from the first chat if available
-      if (chatData.items.length > 0) {
-        const firstChat = chatData.items[0];
-        console.log('Fetching messages for chat:', firstChat.id);
-        const messageData = await client.searchMessages({ chatID: firstChat.id, limit: 10 });
-        console.log('Messages received:', messageData);
-        setMessages(messageData.items);
-      }
+      setMessages(messageData.items);
 
       setIsConnected(true);
       console.log('Successfully connected to Beeper API');
