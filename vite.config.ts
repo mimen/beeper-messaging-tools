@@ -55,6 +55,13 @@ function createBeeperProxy(urlValue: string | undefined, accessToken: string | u
         proxyRequest.removeHeader('authorization')
         if (token) proxyRequest.setHeader('authorization', `Bearer ${token}`)
       })
+      // Beeper echoes any Origin back as allowed; with the token injected above,
+      // passing that through would let any website read the user's messages.
+      proxy.on('proxyRes', (proxyResponse) => {
+        for (const header of Object.keys(proxyResponse.headers)) {
+          if (header.startsWith('access-control-')) delete proxyResponse.headers[header]
+        }
+      })
     },
   }
 }
