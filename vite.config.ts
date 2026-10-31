@@ -25,6 +25,10 @@ export function resolveBeeperProxyConfig(value?: string): BeeperProxyConfig {
   }
 
   const apiPath = url.pathname.replace(/\/$/, '')
+  // new URL() resolves dot segments before this runs, so "/v1/../secret" arrives as "/secret".
+  if (apiPath !== '/v1' && !apiPath.startsWith('/v1/')) {
+    throw new Error('BEEPER_URL path must stay under /v1')
+  }
 
   return {
     target: url.origin,

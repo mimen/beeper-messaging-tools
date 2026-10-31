@@ -15,4 +15,8 @@ describe('resolveBeeperProxyConfig', () => {
       apiPath: '/v1',
     });
   });
+
+  test('rejects a path that normalizes outside /v1', () => {
+    expect(() => resolveBeeperProxyConfig('http://127.0.0.1:23373/v1/%2e%2e/secret')).toThrow(/under \/v1/);
+  });
 });
