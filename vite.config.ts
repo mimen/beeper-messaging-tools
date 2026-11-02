@@ -46,6 +46,14 @@ function createBeeperProxy(urlValue: string | undefined, accessToken: string | u
     timeout: PROXY_TIMEOUT_MS,
     proxyTimeout: PROXY_TIMEOUT_MS,
     bypass: (request, response) => {
+      // The proxy forwards dot segments raw, so "/api/beeper/../../x" would reach "/x" with the token.
+      const { pathname } = new URL(request.url ?? '/', 'http://proxy.invalid')
+      if (pathname !== BEEPER_PROXY_PATH && !pathname.startsWith(`${BEEPER_PROXY_PATH}/`)) {
+        response.statusCode = 400
+        response.end('Beeper proxy path must stay under /api/beeper')
+        return false
+      }
+
       if (request.method === 'GET') return
 
       response.statusCode = 405

@@ -1,14 +1,18 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test';
+import { connect } from 'node:net';
 import { createServer, type ViteDevServer } from 'vite';
 
 let upstream: ReturnType<typeof Bun.serve>;
 let vite: ViteDevServer;
+const upstreamPaths: string[] = [];
 
 beforeAll(async () => {
   upstream = Bun.serve({
     port: 0,
-    fetch: (request) =>
-      Response.json([], { headers: { 'access-control-allow-origin': request.headers.get('origin') ?? '*' } }),
+    fetch: (request) => {
+      upstreamPaths.push(new URL(request.url).pathname);
+      return Response.json([], { headers: { 'access-control-allow-origin': request.headers.get('origin') ?? '*' } });
+    },
   });
   process.env.BEEPER_URL = `http://127.0.0.1:${upstream.port}/v1`;
   process.env.BEEPER_ACCESS_TOKEN = 'test-token';
@@ -30,4 +34,21 @@ test('does not pass the upstream CORS grant to another origin', async () => {
 
   expect(response.status).toBe(200);
   expect(response.headers.get('access-control-allow-origin')).toBeNull();
+});
+
+test('refuses a request path that climbs out of the proxy prefix', async () => {
+  // fetch() resolves dot segments, so send the raw request line.
+  const { hostname, port } = new URL(vite.resolvedUrls!.local[0]);
+  const statusLine = await new Promise<string>((resolve, reject) => {
+    const socket = connect(Number(port), hostname, () =>
+      socket.write('GET /api/beeper/../../secret HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n'),
+    );
+    let body = '';
+    socket.on('data', (chunk) => (body += chunk));
+    socket.on('end', () => resolve(body.split('\r\n')[0]));
+    socket.on('error', reject);
+  });
+
+  expect(statusLine).toBe('HTTP/1.1 400 Bad Request');
+  expect(upstreamPaths).not.toContain('/secret');
 });
