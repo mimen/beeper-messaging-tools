@@ -88,7 +88,8 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
-    server: { proxy },
-    preview: { proxy },
+    // The page is same-origin; Vite's default cors would let any localhost page read through the token.
+    server: { proxy, cors: false },
+    preview: { proxy, cors: false },
   }
 })

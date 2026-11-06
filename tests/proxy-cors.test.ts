@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { connect } from 'node:net';
-import { createServer, type ViteDevServer } from 'vite';
+import { createServer, preview, type PreviewServer, type ViteDevServer } from 'vite';
 
 let upstream: ReturnType<typeof Bun.serve>;
 let vite: ViteDevServer;
+let previewServer: PreviewServer;
 const upstreamPaths: string[] = [];
 
 beforeAll(async () => {
@@ -18,10 +19,12 @@ beforeAll(async () => {
   process.env.BEEPER_ACCESS_TOKEN = 'test-token';
   vite = await createServer({ configFile: 'vite.config.ts', logLevel: 'silent', server: { port: 0 } });
   await vite.listen();
+  previewServer = await preview({ configFile: 'vite.config.ts', logLevel: 'silent', preview: { port: 0 } });
 });
 
 afterAll(async () => {
   await vite.close();
+  await new Promise((resolve) => previewServer.httpServer.close(resolve));
   upstream.stop();
   delete process.env.BEEPER_URL;
   delete process.env.BEEPER_ACCESS_TOKEN;
@@ -34,6 +37,15 @@ test('does not pass the upstream CORS grant to another origin', async () => {
 
   expect(response.status).toBe(200);
   expect(response.headers.get('access-control-allow-origin')).toBeNull();
+});
+
+test('does not grant CORS to a page on another loopback port', async () => {
+  // Vite's default cors option allows any localhost origin, which would let any local page read through the token.
+  for (const base of [vite.resolvedUrls!.local[0], previewServer.resolvedUrls!.local[0]]) {
+    const response = await fetch(`${base}api/beeper/accounts`, { headers: { origin: 'http://localhost:3000' } });
+
+    expect(response.headers.get('access-control-allow-origin')).toBeNull();
+  }
 });
 
 test('refuses a request path that climbs out of the proxy prefix', async () => {
