@@ -11,6 +11,29 @@ interface BeeperProxyConfig {
   apiPath: string
 }
 
+// WHATWG leaves %2f encoded, then the proxy forwards that raw path with the token.
+// ponytail: one decode; a server that unescapes twice can still climb.
+export function pathStaysUnder(pathname: string, root: string): boolean {
+  let decoded = pathname
+  try {
+    decoded = decodeURIComponent(pathname)
+  } catch {
+    return false
+  }
+  const parts: string[] = []
+  for (const segment of decoded.replace(/\\/g, '/').split('/')) {
+    if (segment === '' || segment === '.') continue
+    if (segment === '..') {
+      if (parts.length === 0) return false
+      parts.pop()
+      continue
+    }
+    parts.push(segment)
+  }
+  const resolved = `/${parts.join('/')}`
+  return resolved === root || resolved.startsWith(`${root}/`)
+}
+
 export function resolveBeeperProxyConfig(value?: string): BeeperProxyConfig {
   const url = new URL(value?.trim() || DEFAULT_BEEPER_URL)
   const isLoopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
@@ -26,7 +49,7 @@ export function resolveBeeperProxyConfig(value?: string): BeeperProxyConfig {
 
   const apiPath = url.pathname.replace(/\/$/, '')
   // new URL() resolves dot segments before this runs, so "/v1/../secret" arrives as "/secret".
-  if (apiPath !== '/v1' && !apiPath.startsWith('/v1/')) {
+  if (!pathStaysUnder(apiPath, '/v1')) {
     throw new Error('BEEPER_URL path must stay under /v1')
   }
 
@@ -47,8 +70,10 @@ function createBeeperProxy(urlValue: string | undefined, accessToken: string | u
     proxyTimeout: PROXY_TIMEOUT_MS,
     bypass: (request, response) => {
       // The proxy forwards dot segments raw, so "/api/beeper/../../x" would reach "/x" with the token.
-      const { pathname } = new URL(request.url ?? '/', 'http://proxy.invalid')
-      if (pathname !== BEEPER_PROXY_PATH && !pathname.startsWith(`${BEEPER_PROXY_PATH}/`)) {
+      const requestURL = request.url ?? '/'
+      const { pathname } = new URL(requestURL, 'http://proxy.invalid')
+      const rawPath = requestURL.split('?')[0]
+      if (!pathStaysUnder(pathname, BEEPER_PROXY_PATH) || !pathStaysUnder(rawPath, BEEPER_PROXY_PATH)) {
         response.statusCode = 400
         response.end('Beeper proxy path must stay under /api/beeper')
         return false

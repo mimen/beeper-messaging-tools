@@ -64,3 +64,19 @@ test('refuses a request path that climbs out of the proxy prefix', async () => {
   expect(statusLine).toBe('HTTP/1.1 400 Bad Request');
   expect(upstreamPaths).not.toContain('/secret');
 });
+
+test('refuses an encoded slash that decodes out of the proxy prefix', async () => {
+  const { hostname, port } = new URL(vite.resolvedUrls!.local[0]);
+  const statusLine = await new Promise<string>((resolve, reject) => {
+    const socket = connect(Number(port), hostname, () =>
+      socket.write('GET /api/beeper/..%2f..%2fsecret HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n'),
+    );
+    let body = '';
+    socket.on('data', (chunk) => (body += chunk));
+    socket.on('end', () => resolve(body.split('\r\n')[0]));
+    socket.on('error', reject);
+  });
+
+  expect(statusLine).toBe('HTTP/1.1 400 Bad Request');
+  expect(upstreamPaths.some((path) => path.includes('secret'))).toBe(false);
+});
