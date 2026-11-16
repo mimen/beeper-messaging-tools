@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BeeperClient } from './beeper-api';
+import { BeeperClient, connectErrorHint } from './beeper-api';
 
 interface Account {
   accountID: string;
@@ -75,20 +75,12 @@ function App() {
     } catch (err) {
       console.error('Beeper API Error:', err);
 
-      let errorMessage = 'Failed to connect to Beeper API';
-
       if (err instanceof Error) {
-        errorMessage = err.message;
-
-        // Add helpful context for common errors
-        if (err.message.includes('fetch') || err.message.includes('network')) {
-          errorMessage += '\n\nMake sure the configured Beeper host is reachable and its Desktop API is enabled.';
-        } else if (err.message.includes('401') || err.message.toLowerCase().includes('unauthorized')) {
-          errorMessage += '\n\nBEEPER_ACCESS_TOKEN may be missing or invalid on the Vite server.';
-        }
+        const hint = connectErrorHint(err);
+        setError(hint ? `${err.message}\n\n${hint}` : err.message);
+      } else {
+        setError('Failed to connect to Beeper API');
       }
-
-      setError(errorMessage);
       setIsConnected(false);
     } finally {
       setIsLoading(false);

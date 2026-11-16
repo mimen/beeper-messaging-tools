@@ -55,6 +55,17 @@ export interface SearchMessagesOptions {
   query?: string;
 }
 
+export function connectErrorHint(error: Error): string | undefined {
+  // The page only talks to its own Vite proxy, so a down Beeper host arrives as a 502 or 504, never a fetch failure.
+  if (/\((502|504)\)/.test(error.message) || error.name === 'TimeoutError') {
+    return 'Make sure the configured Beeper host is reachable and its Desktop API is enabled.';
+  }
+  if (error.message.includes('401') || error.message.toLowerCase().includes('unauthorized')) {
+    return 'BEEPER_ACCESS_TOKEN may be missing or invalid on the Vite server.';
+  }
+  return undefined;
+}
+
 export class BeeperClient {
   private baseURL: string;
 

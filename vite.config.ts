@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv, type ProxyOptions } from 'vite'
 import react from '@vitejs/plugin-react'
+import { ServerResponse } from 'node:http'
 
 const DEFAULT_BEEPER_URL = 'https://milads-mac-mini.taild31e9a.ts.net:8448/v1'
 const CENTRAL_BEEPER_HOST = 'milads-mac-mini.taild31e9a.ts.net'
@@ -91,6 +92,12 @@ function createBeeperProxy(urlValue: string | undefined, accessToken: string | u
       proxy.on('proxyReq', (proxyRequest) => {
         proxyRequest.removeHeader('authorization')
         if (token) proxyRequest.setHeader('authorization', `Bearer ${token}`)
+      })
+      // Registered before Vite's own handler, which would answer a refused connection with a bare 500.
+      proxy.on('error', (_error, _request, response) => {
+        if (response instanceof ServerResponse && !response.headersSent) {
+          response.writeHead(502, 'Bad Gateway', { 'Content-Type': 'text/plain' }).end('Beeper host unreachable')
+        }
       })
       // Beeper echoes any Origin back as allowed; with the token injected above,
       // passing that through would let any website read the user's messages.
